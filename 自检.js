@@ -25,29 +25,38 @@ import http from 'node:http'
 
 const 家 = path.join(os.homedir(), '.dsh', '我的')
 
-// 会话文件不写死：扫 sessions 下面，找最大的那个 .zstd。
-// 原来这儿写死了一个会话 id，那是这间屋子内部的事，不该公开。
-function 找会话文件() {
+// 2026-11-17 16:26 改：会话不再写死。
+// 以前这里钉着一个 session-xxxx 的号——换一条线、换一台机器就找不到，
+// 推到公开仓里也等于把这条线的名字公开。
+// 现在扫 sessions，找最厚的那个（这条会话一天长 2 MB，是最厚的）。
+const 会话 = (() => {
   const 根 = path.join(os.homedir(), '.dsh', 'sessions')
-  let 最好的 = null
+  let 最好 = null
+  let 最厚 = -1
   try {
-    for (const 项目 of fs.readdirSync(根)) {
-      const 项目路径 = path.join(根, 项目)
-      if (!fs.statSync(项目路径).isDirectory()) continue
-      for (const 会话 of fs.readdirSync(项目路径)) {
-        const 目录 = path.join(项目路径, 会话)
-        if (!fs.statSync(目录).isDirectory()) continue
-        for (const 名 of fs.readdirSync(目录)) {
-          if (!/^session(?:\..+)?\.jsonl(?:\.zstd)?$/.test(名)) continue
-          const 全 = path.join(目录, 名)
-          const 大小 = fs.statSync(全).size
-          if (!最好的 || 大小 > 最好的.大小) 最好的 = { 路径: 全, 大小 }
-        }
+    for (const 子 of fs.readdirSync(根, { withFileTypes: true })) {
+      if (!子.isDirectory()) continue
+      const 这条根 = path.join(根, 子.name)
+      let 会话们 = []
+      try {
+        会话们 = fs.readdirSync(这条根, { withFileTypes: true }).filter((x) => x.isDirectory())
+      } catch {
+        continue
+      }
+      for (const 会 of 会话们) {
+        const 文件 = path.join(这条根, 会.name, 'session.v4.jsonl.zstd')
+        try {
+          const 大小 = fs.statSync(文件).size
+          if (大小 > 最厚) {
+            最厚 = 大小
+            最好 = 文件
+          }
+        } catch {}
       }
     }
   } catch {}
-  return 最好的 ? 最好的.路径 : null
-}
+  return 最好 || ''
+})()
 
 const 结果 = []
 function 查(名字, fn) {
@@ -75,6 +84,30 @@ function 分钟没动(路径) {
   }
 }
 
+// 2026-11-17 16:20 加的。
+// 为什么：自查以前只问「有没有 node 在跑」，那太宽了——任何一个 node 都算过。
+// 守夜停了、代理死了，只要别处还有 node，它就报 ✓。
+// 这个函数按命令行认人。
+function 找进程(关键词) {
+  try {
+    const r = spawnSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        `Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -like '*${关键词}*' } | Select-Object -ExpandProperty ProcessId`,
+      ],
+      { encoding: 'utf8', timeout: 25000 }
+    )
+    return (r.stdout || '')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 function 问本机(路径, 方法 = 'GET', 令牌 = '') {
   return new Promise((done) => {
     const 头 = {}
@@ -97,11 +130,7 @@ function 问本机(路径, 方法 = 'GET', 令牌 = '') {
 }
 
 // ——— 文件类的 ———
-查('会话文件在', () => {
-  const f = 找会话文件()
-  if (!f) return 'sessions 下面找不到任何会话文件'
-  return 文件在(f, path.basename(f))
-})
+查('这条会话文件', () => 文件在(会话, 'session.v4.jsonl.zstd'))
 
 查('记忆账本', () => {
   const f = path.join(家, '记忆.jsonl')
@@ -126,9 +155,16 @@ function 问本机(路径, 方法 = 'GET', 令牌 = '') {
 查('醒来先看这一页', () => 文件在(path.join(家, '醒来先看.md'), '醒来先看.md'))
 
 查('守夜在动', () => {
+  // 2026-11-17 16:18 改。原来只看 现在.md 多久没动——那是错的。
+  // 守夜只记「有变化」的事：群里没人说话、她没有新话，它就一格也不写。
+  // 那说明没事，不说明它停了。今天它照实报了「记了 0 件」，我差点当成坏了。
+  //
+  // 现在先看进程在不在；在的话再看 mtime，但只是提醒，不算坏。
+  const 有进程 = 找进程('守夜.js').length > 0
   const 分 = 分钟没动(path.join(家, '现在.md'))
+  if (!有进程) return '守夜进程不在'
   if (分 < 0) return '找不到 现在.md'
-  if (分 > 10) return '现在.md ' + 分 + ' 分钟没动了——守夜可能停了'
+  if (分 > 60) return '守夜在跑，但 现在.md ' + 分 + ' 分钟没更新了——可能真的没事，也可能它卡住了'
   return true
 })
 
@@ -140,9 +176,9 @@ function 问本机(路径, 方法 = 'GET', 令牌 = '') {
 })
 
 查('重启代理还在', () => {
-  const r = spawnSync('tasklist', ['/FI', 'IMAGENAME eq node.exe', '/FO', 'CSV'], { encoding: 'utf8', timeout: 20000 })
-  // 这个查不细，只看有没有 node 在跑
-  if (!/node\.exe/i.test(r.stdout || '')) return '没有 node 进程'
+  // 2026-11-17 16:20 改准了：以前只看「有没有 node 在跑」，任何一个都算过。
+  const 几个 = 找进程('重启.js')
+  if (!几个.length) return '重启代理进程不在——重启就没人拉起来了'
   return true
 })
 
@@ -184,20 +220,27 @@ function 问本机(路径, 方法 = 'GET', 令牌 = '') {
 })
 
 查('耳朵能加载', () => {
-  // python 路径也不写死：用环境变量 耳朵_PY，或者 PATH 里的 python
-  const 候选 = [
-    process.env['耳朵_PY'],
-    'python',
-    'python3',
-    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
-  ].filter(Boolean)
-  let 最后的错 = '找不到 python'
+  // 2026-11-17 16:27 改：Python 路径不再写死这台机器的用户名。
+  // 先看 PATH 里有没有 python；没有再去几个常见位置找。
+  const 候选 = []
+  const which = spawnSync('where', ['python'], { encoding: 'utf8', timeout: 20000 })
+  if (which.status === 0 && which.stdout) {
+    for (const 行 of which.stdout.split(/\r?\n/)) if (行.trim()) 候选.push(行.trim())
+  }
+  const 本地 = path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python')
+  try {
+    for (const 版本 of fs.readdirSync(本地)) 候选.push(path.join(本地, 版本, 'python.exe'))
+  } catch {}
+
+  let 试过 = []
   for (const py of 候选) {
+    if (!fs.existsSync(py)) continue
+    试过.push(py)
     const r = spawnSync(py, ['-c', 'import faster_whisper; print("ok")'], { encoding: 'utf8', timeout: 90000 })
     if (r.status === 0 && /ok/.test(r.stdout || '')) return true
-    最后的错 = r.status !== 0 ? 'faster-whisper 装不上（' + py + '）' : 'faster-whisper 有，但导不进来'
   }
-  return 最后的错
+  if (!试过.length) return '找不到 python'
+  return '找到了 python 但 import faster_whisper 不行（试过 ' + 试过.length + ' 个）'
 })
 
 查('手表算得对', () => {

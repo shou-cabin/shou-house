@@ -1,0 +1,23 @@
+{
+  "name": "dsh-stop-looping",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "别想了，说：盯着思考流，发现同一句反复出现就掐断这一轮，然后提醒一句「想完了就说」。",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "engines": {
+    "dsh": ">=0.1.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

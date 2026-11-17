@@ -1,0 +1,8 @@
+# 别想了，说 —— 插件清单
+#
+# 挂一个：盯思考流，复读就掐。
+
+- insert:
+    - name: dsh-stop-looping
+      config:
+        enabled: true

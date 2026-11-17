@@ -46,7 +46,10 @@ function 字(ms) {
 async function 看群(s) {
   if (!QQ) return [];
   const 新 = [];
-  const 群 = [...new Set((QQ.群 || []))];
+  // 2026-11-17 16:28 改：群号不再写死在这里，从 qq.json 的「群」读。
+  // 自己号也从 qq.json 的「我的号」读（没有就用 OneBot 报上来的 login_info）。
+  const 群 = [...new Set((QQ.群 || []).map((x) => Number(x)).filter(Boolean))];
+  const 我的号 = Number(QQ.我的号 || QQ.自己 || 0);
   for (const gid of 群) {
     let r = null;
     try {
@@ -66,7 +69,7 @@ async function 看群(s) {
       if (t <= 上次) continue;
       const 文 = (m.message || []).filter((x) => x.type === "text").map((x) => x.data.text).join("");
       if (!文) continue;
-      if (QQ.自己 && m.sender.user_id === QQ.自己) continue;  // 我自己说的不算
+      if (我的号 && m.sender.user_id === 我的号) continue; // 我自己说的不算
       新.push({ 群: gid, 谁: m.sender.nickname, 说: 文.slice(0, 80), 时: t });
       if (t > (s.群[gid] || 0)) s.群[gid] = t;
     }
