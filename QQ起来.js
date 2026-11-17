@@ -124,7 +124,44 @@ if (只看) {
   process.exit(0)
 }
 
-// —— 二、QQ 进程在不在 ——
+// —— 二、5099 在不在（SnowLuma 自己也会被重启杀掉）——
+// 2026-11-17 18:02 补。原来这里假设 5099 已经开着，
+// 可重启会连 SnowLuma 一起杀——那 QQ起来.js 第一步就撞 ECONNREFUSED 崩掉。
+if (!(await 测端口(5099))) {
+  console.log('       5099 不在，先起 SnowLuma')
+  const 桥根 = path.join(os.homedir(), 'Desktop', '会老的AI', 'qq桥', 'sl')
+  const 入口 = path.join(桥根, 'index.mjs')
+  if (!fs.existsSync(入口)) {
+    console.log('       找不到 SnowLuma：' + 入口)
+    process.exit(1)
+  }
+  // 它自己的原生模块要用系统那个 node
+  const 系统node = 'C:\\Program Files\\nodejs\\node.exe'
+  const 用node = fs.existsSync(系统node) ? 系统node : process.execPath
+  try {
+    spawn(用node, ['index.mjs'], { cwd: 桥根, detached: true, stdio: 'ignore', windowsHide: true }).unref()
+  } catch (e) {
+    console.log('       起不来：' + String((e && e.message) || e))
+    process.exit(1)
+  }
+  let 站稳 = false
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1500))
+    if (await 测端口(5099)) {
+      站稳 = true
+      break
+    }
+  }
+  if (!站稳) {
+    console.log('       5099 等不到')
+    process.exit(1)
+  }
+  console.log('       SnowLuma 起来了（5099 通）')
+} else {
+  console.log('       5099 已经在跑')
+}
+
+// —— 三、QQ 进程在不在 ——
 let qq数 = 数QQ()
 if (qq数 === 0) {
   console.log('       QQ 没开，开它')
