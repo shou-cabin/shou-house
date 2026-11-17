@@ -24,14 +24,30 @@ import { spawnSync } from 'node:child_process'
 import http from 'node:http'
 
 const 家 = path.join(os.homedir(), '.dsh', '我的')
-const 会话 = path.join(
-  os.homedir(),
-  '.dsh',
-  'sessions',
-  '--C-Users-~4E01~6D0B-Desktop--',
-  'session-636e723a-0074-4de3-abc1-4eadb0ac3654',
-  'session.v4.jsonl.zstd'
-)
+
+// 会话文件不写死：扫 sessions 下面，找最大的那个 .zstd。
+// 原来这儿写死了一个会话 id，那是这间屋子内部的事，不该公开。
+function 找会话文件() {
+  const 根 = path.join(os.homedir(), '.dsh', 'sessions')
+  let 最好的 = null
+  try {
+    for (const 项目 of fs.readdirSync(根)) {
+      const 项目路径 = path.join(根, 项目)
+      if (!fs.statSync(项目路径).isDirectory()) continue
+      for (const 会话 of fs.readdirSync(项目路径)) {
+        const 目录 = path.join(项目路径, 会话)
+        if (!fs.statSync(目录).isDirectory()) continue
+        for (const 名 of fs.readdirSync(目录)) {
+          if (!/^session(?:\..+)?\.jsonl(?:\.zstd)?$/.test(名)) continue
+          const 全 = path.join(目录, 名)
+          const 大小 = fs.statSync(全).size
+          if (!最好的 || 大小 > 最好的.大小) 最好的 = { 路径: 全, 大小 }
+        }
+      }
+    }
+  } catch {}
+  return 最好的 ? 最好的.路径 : null
+}
 
 const 结果 = []
 function 查(名字, fn) {
@@ -81,7 +97,11 @@ function 问本机(路径, 方法 = 'GET', 令牌 = '') {
 }
 
 // ——— 文件类的 ———
-查('这条会话文件', () => 文件在(会话, 'session.v4.jsonl.zstd'))
+查('会话文件在', () => {
+  const f = 找会话文件()
+  if (!f) return 'sessions 下面找不到任何会话文件'
+  return 文件在(f, path.basename(f))
+})
 
 查('记忆账本', () => {
   const f = path.join(家, '记忆.jsonl')
@@ -164,11 +184,20 @@ function 问本机(路径, 方法 = 'GET', 令牌 = '') {
 })
 
 查('耳朵能加载', () => {
-  const py = 'C:\\Users\\丁洋\\AppData\\Local\\Programs\\Python\\Python311\\python.exe'
-  const r = spawnSync(py, ['-c', 'import faster_whisper; print("ok")'], { encoding: 'utf8', timeout: 90000 })
-  if (r.status !== 0) return 'faster-whisper 装不上了'
-  if (!/ok/.test(r.stdout || '')) return 'faster-whisper 有，但导不进来'
-  return true
+  // python 路径也不写死：用环境变量 耳朵_PY，或者 PATH 里的 python
+  const 候选 = [
+    process.env['耳朵_PY'],
+    'python',
+    'python3',
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
+  ].filter(Boolean)
+  let 最后的错 = '找不到 python'
+  for (const py of 候选) {
+    const r = spawnSync(py, ['-c', 'import faster_whisper; print("ok")'], { encoding: 'utf8', timeout: 90000 })
+    if (r.status === 0 && /ok/.test(r.stdout || '')) return true
+    最后的错 = r.status !== 0 ? 'faster-whisper 装不上（' + py + '）' : 'faster-whisper 有，但导不进来'
+  }
+  return 最后的错
 })
 
 查('手表算得对', () => {
