@@ -24,9 +24,38 @@ import { spawn, execFileSync } from 'node:child_process'
 
 const 家 = path.join(os.homedir(), '.dsh', '我的')
 const 基 = 'http://127.0.0.1:5099'
-const QQ路径 = 'C:\\Program Files\\Tencent\\QQNT\\QQ.exe'
 const 令牌文件 = path.join(家, 'qq', 'snowluma.json')
+const QQ配置文件 = path.join(家, 'qq', 'qq.json')
 const 只看 = process.argv.includes('--check')
+
+// 2026-11-17 17:15 改：QQ 装在哪不再写死。
+// 以前钉着 C:\Program Files\Tencent\QQNT\QQ.exe——换了安装位置就找不到。
+// 现在按顺序找：qq.json 里的「QQ路径」→ 几个常见位置 → PATH 里的 QQ。
+function 找QQ() {
+  const 候选 = []
+  try {
+    const j = JSON.parse(fs.readFileSync(QQ配置文件, 'utf8'))
+    if (j && j.QQ路径) 候选.push(j.QQ路径)
+  } catch {}
+  候选.push(
+    'C:\\Program Files\\Tencent\\QQNT\\QQ.exe',
+    'C:\\Program Files (x86)\\Tencent\\QQNT\\QQ.exe',
+    path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Tencent', 'QQNT', 'QQ.exe')
+  )
+  for (const 一个 of 候选) {
+    if (一个 && fs.existsSync(一个)) return 一个
+  }
+  // 最后扫一遍常见根目录
+  for (const 根 of ['C:\\Program Files\\Tencent', 'C:\\Program Files (x86)\\Tencent']) {
+    try {
+      for (const 项 of fs.readdirSync(根, { withFileTypes: true })) {
+        const 试 = path.join(根, 项.name, 'QQ.exe')
+        if (fs.existsSync(试)) return 试
+      }
+    } catch {}
+  }
+  return ''
+}
 
 function 读令牌() {
   // 2026-11-17 16:30 改：不再写死一个密码当兜底。
@@ -99,8 +128,14 @@ if (只看) {
 let qq数 = 数QQ()
 if (qq数 === 0) {
   console.log('       QQ 没开，开它')
+  const qq在哪 = 找QQ()
+  if (!qq在哪) {
+    console.log('       找不到 QQ 装在哪。在 qq/qq.json 里写一个「QQ路径」告诉它。')
+    process.exit(1)
+  }
+  console.log('       用的：' + qq在哪)
   try {
-    spawn(QQ路径, [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
+    spawn(qq在哪, [], { detached: true, stdio: 'ignore', windowsHide: false }).unref()
   } catch (e) {
     console.log('       开不起来：' + String((e && e.message) || e))
     process.exit(1)
