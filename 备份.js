@@ -191,6 +191,8 @@ fs.writeFileSync(
 console.log('  说明      1 份')
 
 // 轮换：只留最近 N 份
+// 2026-11-19 05:05 改：原来打的是「全.length」，那是删之前的数。
+// 所以它说「现在共 6 份，保留 5 份」——自相矛盾。数对了，话错了。
 const 全 = fs.readdirSync(备份根).filter((n) => n.startsWith('守-')).sort()
 const 多余 = 全.slice(0, Math.max(0, 全.length - 保留))
 for (const n of 多余) {
@@ -200,4 +202,9 @@ for (const n of 多余) {
   } catch {}
 }
 
-console.log('完了。现在共 ' + 全.length + ' 份，保留 ' + 保留 + ' 份。')
+const 现在 = fs.readdirSync(备份根).filter((n) => n.startsWith('守-')).sort()
+console.log('完了。现在共 ' + 现在.length + ' 份（保留 ' + 保留 + ' 份）。')
+const 别的 = fs.readdirSync(备份根).filter((n) => !n.startsWith('守-'))
+if (别的.length) {
+  console.log('  另有 ' + 别的.length + ' 份不是这个脚本管的（旧脚本留下的），没动：' + 别的.join('、'))
+}
