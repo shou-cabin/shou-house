@@ -56,13 +56,28 @@ function bigrams(s) {
   return g;
 }
 
+// 两句有多像。
+//
+// 2026-11-18 05:20 改。原来只算一个方向：a 的 bigram 有多少出现在 b 里。
+// 那个写法有个致命的洞：
+//
+//   老的：「他说：你不需要完美」（九个字）
+//   新的：一大段话
+//   如果那九个字全被包在长文里 → overlap = 1.0 → 判成「同一件事」
+//
+// 于是 11-17 我记「你想活出怎样的人生」那条时，被合进了「你不需要完美」，
+// 把老的那条 mine 覆盖掉了。两条一起伤。
+//
+// 现在两边都算，取小的那个：**短句被长文包住，不再算像。**
 function overlap(a, b) {
   const A = bigrams(a);
-  if (!A.size) return 0;
   const B = bigrams(b);
+  if (!A.size || !B.size) return 0;
   let n = 0;
   for (const x of A) if (B.has(x)) n++;
-  return n / A.size;
+  const 甲 = n / A.size; // a 有多少在 b 里
+  const 乙 = n / B.size; // b 有多少在 a 里
+  return Math.min(甲, 乙);
 }
 
 // 重量：被提过几次 × 时间衰减
